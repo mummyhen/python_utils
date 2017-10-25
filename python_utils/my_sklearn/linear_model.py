@@ -1,15 +1,12 @@
-from sklearn.linear_model.base import LinearModel, _preprocess_data, _rescale_data
-from sklearn.base import RegressorMixin
-from sklearn.utils import check_X_y
 import numpy as np
 import scipy.sparse as sp
 from scipy import linalg
+from sklearn.base import RegressorMixin
 from sklearn.externals.joblib import Parallel, delayed
+from sklearn.linear_model.base import LinearModel, _preprocess_data, _rescale_data
+from sklearn.utils import check_X_y
 
-from sklearn.utils import check_consistent_length, column_or_1d
-
-from scipy.sparse.linalg import lsqr as sparse_lsqr
-from scipy.optimize import nnls
+from ..utils import check_constraints, optim_fun
 
 
 class nnLinearRegression(LinearModel, RegressorMixin):
@@ -121,7 +118,7 @@ class nnLinearRegression(LinearModel, RegressorMixin):
             X, y = _rescale_data(X, y, sample_weight)
 
         if sp.issparse(X) or is_constr:
-            if y.ndim < 2:
+            if y.ndim < 2 or y.shape[1] == 1:
                 self.coef_, self._residues = optim_fun(X, y, is_constr=is_constr)
             else:
                 # sparse_lstsq cannot handle y with shape (M, K)
@@ -145,28 +142,3 @@ class nnLinearRegression(LinearModel, RegressorMixin):
         return self
 
 
-def check_constraints(X, constraints):
-    if not isinstance(constraints, dict):
-        raise ValueError("constraints should be a dictionary")
-    for k in ["sign", "value"]:
-        if k not in constraints.keys():
-            raise ValueError("attribute %s is missing in dictionary constraints" % k)
-        check_consistent_length(X.T, constraints[k])
-        column_or_1d(constraints[k])
-        constraints[k] = constraints[k].ravel()
-    if not all(x != 0 for x in constraints["sign"]):
-        raise ValueError("constraints['sign'] cannot contain 0")
-    constraints["sign"] = np.sign(constraints["sign"])
-
-    return constraints
-
-
-def optim_fun(X, y, is_constr):
-    y = y.ravel()
-    if is_constr:
-        coef, residues = nnls(X, y)
-    else:
-        out = sparse_lsqr(X, y)
-        coef = out[0]
-        residues = out[3]
-    return coef, residues
