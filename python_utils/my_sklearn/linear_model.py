@@ -78,11 +78,8 @@ class nnLinearRegression(LinearModel, RegressorMixin):
         sample_weight : numpy array of shape [n_samples]
             Individual weights for each sample
 
-        constraints : dictionary with attributes :
-            "sign" : numpy array of shape [n_features] -1 for a maximum,
-                +1 for a minimum
-            "value" : numpy array of shape [n_features] with coefficient
-                constraint value
+        constraints : numpy array of shape [n_features] -1 for negative
+            coefficients, +1 for non negative coefficients
 
         Returns
         -------
@@ -100,18 +97,11 @@ class nnLinearRegression(LinearModel, RegressorMixin):
         is_constr = (constraints is not None)
         if is_constr:
             constraints = check_constraints(X, constraints)
-            cs = constraints["sign"]
-            cv = constraints["value"]
-            y_offset_c = np.outer(np.dot(X, cv), np.ones(y.shape[1]))
-            X = X * cs
-            y = y - y_offset_c
+            X = X * constraints
 
         X, y, X_offset, y_offset, X_scale = _preprocess_data(
             X, y, fit_intercept=self.fit_intercept, normalize=self.normalize,
             copy=self.copy_X, sample_weight=sample_weight)
-
-        if is_constr:
-            X_scale = X_scale * cs
 
         if sample_weight is not None:
             # Sample weight can be implemented via a simple rescaling.
@@ -132,13 +122,12 @@ class nnLinearRegression(LinearModel, RegressorMixin):
                 linalg.lstsq(X, y)
             self.coef_ = self.coef_.T
 
-        if y.ndim == 1:
+        if y.ndim == 1 or y.shape[1] == 1:
             self.coef_ = np.ravel(self.coef_)
 
         self._set_intercept(X_offset, y_offset, X_scale)
         if is_constr:
-            self.coef_ = self.coef_ * cs
-            self.intercept_ = np.outer(self.intercept_, np.ones(y.shape[1])) - y_offset_c
+            self.coef_ = self.coef_ * constraints
         return self
 
 
