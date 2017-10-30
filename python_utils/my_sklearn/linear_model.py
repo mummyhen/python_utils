@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.sparse as sp
-from scipy import linalg
+from scipy import linalg, stats
 from sklearn.base import RegressorMixin
 from sklearn.externals.joblib import Parallel, delayed
 from sklearn.linear_model.base import LinearModel, _preprocess_data, _rescale_data
@@ -130,4 +130,31 @@ class nnLinearRegression(LinearModel, RegressorMixin):
             self.coef_ = self.coef_ * constraints
         return self
 
+    def stats(self, X, y):
+        index_not0 = self.coef_ != 0
+        coef_not0 = self.coef_[index_not0]
+        X_not0 = X[:, index_not0]
 
+        sse = np.sum((self.predict(X) - y) ** 2, axis=0) / float(X.shape[0] - X_not0.shape[1])
+        try:
+            if y.ndim < 2:
+                se = np.sqrt(np.diagonal(sse * np.linalg.inv(np.dot(X_not0.T, X_not0))))
+            else:
+                se = np.array([
+                    np.sqrt(np.diagonal(sse[i] * np.linalg.inv(np.dot(X_not0.T, X_not0))))
+                    for i in range(sse.shape[0])
+                ])
+            t_not0 = coef_not0 / se
+            p_not0 = 2 * (1 - stats.t.cdf(np.abs(t_not0), y.shape[0] - X_not0.shape[1]))
+            self.t = np.ones(self.coef_.shape)
+            self.p = np.ones(self.coef_.shape)
+            self.t[index_not0] = t_not0
+            self.p[index_not0] = p_not0
+            self.singular = False
+        except:
+            self.t = np.array([X.shape[1] * [None]])
+            self.p = np.array([X.shape[1] * [None]])
+            self.singular = True
+        self.R2 = self.score(X, y)
+        self.R2adj = 1 - (1 - self.R2) * (X.shape[0] - 1) / (X.shape[0] - len(coef_not0) - 1)
+        return self
